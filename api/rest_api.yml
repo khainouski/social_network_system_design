@@ -1,0 +1,763 @@
+openapi: 3.0.0
+
+tags:
+  - name: Posts
+  - name: Reactions
+  - name: Comments
+  - name: Subscriptions
+  - name: Feed
+  - name: Places
+
+info:
+  title: Travel Social Network API
+  description: Current API describes interaction with the social network for travelers
+  version: 1.0.0
+
+servers:
+  - url: https://api.travel-network.ru/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /photos:
+    post:
+      summary: Upload photo
+      description: Method uploads a photo before the post is created. Returns photo id to attach to the post
+      tags:
+        - Posts
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: photo file (jpeg, png, heic), up to 10 MB
+              required:
+                - file
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Photo'
+              examples:
+                response:
+                  value:
+                    id: "ph_8f2a1c"
+                    url: "https://cdn.travel-network.ru/photos/ph_8f2a1c.jpg"
+                    preview_url: "https://cdn.travel-network.ru/photos/ph_8f2a1c_preview.jpg"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "413":
+          description: Photo is too large
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /posts:
+    post:
+      summary: Create post
+      description: Method creates a travel post with photos, description and place
+      tags:
+        - Posts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  maxLength: 2000
+                  description: post text
+                place_id:
+                  type: string
+                  description: place id from the list of places
+                photo_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: string
+                  description: ids of uploaded photos
+              required:
+                - place_id
+                - photo_ids
+            examples:
+              request:
+                value:
+                  description: "Закат над Невой"
+                  place_id: "pl_spb"
+                  photo_ids: ["ph_8f2a1c", "ph_9b3d2e"]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Place or photo not found
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /posts/{post_id}:
+    get:
+      summary: Get post
+      description: Method returns a post by id
+      tags:
+        - Posts
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+    patch:
+      summary: Update post
+      description: Method updates own post. Only passed fields are changed. To remove a photo, pass photo_ids without it
+      tags:
+        - Posts
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                description:
+                  type: string
+                  maxLength: 2000
+                  description: new post text
+                place_id:
+                  type: string
+                  description: new place id from the list of places
+                photo_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: string
+                  description: new list of photo ids, order is kept
+            examples:
+              request:
+                value:
+                  description: "Закат над Невой, июль 2026"
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+    delete:
+      summary: Delete post
+      description: Method deletes own post
+      tags:
+        - Posts
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /posts/{post_id}/likes:
+    put:
+      summary: Like post
+      description: Method likes the post. Repeated call does nothing, user can like a post only once
+      tags:
+        - Reactions
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        "204":
+          description: Liked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+    delete:
+      summary: Unlike post
+      description: Method removes the like from the post
+      tags:
+        - Reactions
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        "204":
+          description: Unliked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /posts/{post_id}/comments:
+    post:
+      summary: Create comment
+      description: Method creates a comment under the post
+      tags:
+        - Comments
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: comment text
+              required:
+                - text
+            examples:
+              request:
+                value:
+                  text: "Очень красиво!"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+    get:
+      summary: Get comments
+      description: Method returns comments of the post, newest first
+      tags:
+        - Comments
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/CommentsLimit'
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    description: cursor for the next page, null if there are no more comments
+                required:
+                  - comments
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /comments/{comment_id}:
+    patch:
+      summary: Update comment
+      description: Method updates text of own comment
+      tags:
+        - Comments
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: new comment text
+              required:
+                - text
+            examples:
+              request:
+                value:
+                  text: "Очень красиво! Хочу туда"
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+    delete:
+      summary: Delete comment
+      description: Method deletes own comment
+      tags:
+        - Comments
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /subscriptions/{user_id}:
+    put:
+      summary: Subscribe to user
+      description: Method subscribes current user to the traveler. Repeated call does nothing
+      tags:
+        - Subscriptions
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        "204":
+          description: Subscribed
+        "400":
+          description: Can not subscribe to yourself or subscriptions limit (5 000) is reached
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+    delete:
+      summary: Unsubscribe from user
+      description: Method unsubscribes current user from the traveler
+      tags:
+        - Subscriptions
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        "204":
+          description: Unsubscribed
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /feed:
+    get:
+      summary: Get home feed
+      description: Method returns posts of users the current user is subscribed to, newest first
+      tags:
+        - Feed
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          $ref: '#/components/responses/PostsPage'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /users/{user_id}/posts:
+    get:
+      summary: Get traveler feed
+      description: Method returns posts of the traveler, newest first
+      tags:
+        - Feed
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          $ref: '#/components/responses/PostsPage'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /places:
+    get:
+      summary: Search places
+      description: Method searches places by name
+      tags:
+        - Places
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: part of the place name
+          schema:
+            type: string
+            minLength: 2
+          example: "эрми"
+        - $ref: '#/components/parameters/PlacesLimit'
+      responses:
+        "200":
+          $ref: '#/components/responses/PlacesList'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /places/popular:
+    get:
+      summary: Get popular places
+      description: Method returns places sorted by likes of their posts for the last 30 days
+      tags:
+        - Places
+      parameters:
+        - $ref: '#/components/parameters/PlacesLimit'
+      responses:
+        "200":
+          $ref: '#/components/responses/PlacesList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /places/{place_id}/posts:
+    get:
+      summary: Get place posts
+      description: Method returns posts from the place, newest first
+      tags:
+        - Places
+      parameters:
+        - name: place_id
+          in: path
+          required: true
+          description: place id
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          $ref: '#/components/responses/PostsPage'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token of the current user
+
+  parameters:
+    PostId:
+      name: post_id
+      in: path
+      required: true
+      description: post id
+      schema:
+        type: string
+    CommentId:
+      name: comment_id
+      in: path
+      required: true
+      description: comment id
+      schema:
+        type: string
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      description: user id
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: cursor from the previous page, empty for the first page
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: page size
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 10
+    CommentsLimit:
+      name: limit
+      in: query
+      required: false
+      description: number of comments
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    PlacesLimit:
+      name: limit
+      in: query
+      required: false
+      description: number of places
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+
+  schemas:
+    Photo:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+          description: full size photo url
+        preview_url:
+          type: string
+          description: preview photo url
+      required:
+        - id
+        - url
+        - preview_url
+
+    Post:
+      type: object
+      properties:
+        id:
+          type: string
+        author_id:
+          type: string
+        description:
+          type: string
+        place:
+          $ref: '#/components/schemas/Place'
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Photo'
+        likes_count:
+          type: integer
+        comments_count:
+          type: integer
+        liked_by_me:
+          type: boolean
+          description: current user liked the post
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: time of the last edit, null if not edited
+      required:
+        - id
+        - author_id
+        - place
+        - photos
+        - likes_count
+        - comments_count
+        - liked_by_me
+        - created_at
+      example:
+        id: "po_1a2b3c"
+        author_id: "us_42"
+        description: "Закат над Невой"
+        place:
+          id: "pl_spb"
+          name: "Санкт-Петербург"
+          country: "Россия"
+        photos:
+          - id: "ph_8f2a1c"
+            url: "https://cdn.travel-network.ru/photos/ph_8f2a1c.jpg"
+            preview_url: "https://cdn.travel-network.ru/photos/ph_8f2a1c_preview.jpg"
+        likes_count: 128
+        comments_count: 7
+        liked_by_me: false
+        created_at: "2026-07-15T19:30:00Z"
+        updated_at: null
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        post_id:
+          type: string
+        author_id:
+          type: string
+        text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: time of the last edit, null if not edited
+      required:
+        - id
+        - post_id
+        - author_id
+        - text
+        - created_at
+      example:
+        id: "co_5d6e7f"
+        post_id: "po_1a2b3c"
+        author_id: "us_77"
+        text: "Очень красиво!"
+        created_at: "2026-07-15T20:05:00Z"
+        updated_at: null
+
+    Place:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        country:
+          type: string
+        posts_count:
+          type: integer
+      required:
+        - id
+        - name
+        - country
+      example:
+        id: "pl_spb"
+        name: "Санкт-Петербург"
+        country: "Россия"
+        posts_count: 15230
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+  responses:
+    PostsPage:
+      description: Ok
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              posts:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Post'
+              next_cursor:
+                type: string
+                nullable: true
+                description: cursor for the next page, null if there are no more posts
+            required:
+              - posts
+    PlacesList:
+      description: Ok
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              places:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Place'
+            required:
+              - places
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+    Forbidden:
+      description: Forbidden, it is not your post or comment
+    NotFound:
+      description: Not found
+    ServerError:
+      description: Server error
